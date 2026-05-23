@@ -1,0 +1,21 @@
+# Telegram bot framework
+pyTelegramBotAPI==4.22.1
+
+# Web server (webhook mode)
+Flask==3.1.0
+gunicorn==23.0.0
+
+# AI – book extraction
+groq==0.13.1
+
+# Notion database
+notion-client==2.2.1
+
+# Social media scraping
+yt-dlp==2025.1.15
+
+# HTTP requests (Google Books + Ntfy)
+requests==2.32.3
+
+# Environment variables
+python-dotenv==1.0.1

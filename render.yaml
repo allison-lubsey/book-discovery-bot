@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: book-discovery-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn bot:app --workers 1 --timeout 120 --bind 0.0.0.0:$PORT
+    plan: free
+
+    # Render auto-injects RENDER_EXTERNAL_URL — no need to define it here.
+    # Add all secrets in the Render dashboard under Environment Variables.
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false          # set manually in dashboard
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NOTION_API_KEY
+        sync: false
+      - key: NOTION_DATABASE_ID
+        sync: false
+      - key: NTFY_TOPIC
+        sync: false
+      - key: TELEGRAM_USER_ID   # optional – leave blank to allow any user
+        sync: false
+      - key: GOOGLE_BOOKS_API_KEY  # optional – improves rate limits
+        sync: false
+
+    # Health-check: Render pings / every 10 s to decide if the service is up.
+    # The bot's / route returns 200 OK, satisfying this check.
+    healthCheckPath: /
