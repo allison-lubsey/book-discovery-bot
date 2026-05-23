@@ -102,7 +102,7 @@ def save_book_to_notion(book: dict, source_url: str) -> bool:
         logger.error(
             "Notion API error saving '%s': %s (status %s)",
             title,
-            exc.message,
+            exc.body,
             exc.status,
         )
         return False
