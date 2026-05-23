@@ -63,14 +63,22 @@ def fetch_post_content(url: str) -> str | None:
 
         # ── Comments ──────────────────────────────────────────────────────────
         # yt-dlp returns a list of comment dicts when getcomments=True.
-        # Sort by like_count so the most-relevant comments come first.
-        comments: list = info.get("comments") or []
-        if comments:
-            top_comments = sorted(
-                comments,
-                key=lambda c: c.get("like_count") or 0,
-                reverse=True,
-            )[:25]   # cap at 25 to keep token count reasonable
+        # Each comment may also have a 'replies' list — we flatten those in
+        # so that "What book is this?" → reply with title is captured.
+        raw_comments: list = info.get("comments") or []
+        logger.info("yt-dlp returned %d raw comment(s) for %s", len(raw_comments), url)
+
+        if raw_comments:
+            # Flatten top-level comments + their replies into one list
+            flat: list[dict] = []
+            for c in raw_comments:
+                flat.append(c)
+                for r in (c.get("replies") or []):
+                    flat.append(r)
+
+            # Sort by like_count (most-liked first) and cap total
+            flat.sort(key=lambda c: c.get("like_count") or 0, reverse=True)
+            top_comments = flat[:40]
 
             comment_texts = [
                 c.get("text", "").strip()
@@ -79,11 +87,17 @@ def fetch_post_content(url: str) -> str | None:
             ]
             if comment_texts:
                 parts.append(
-                    "Top Comments:\n" + "\n".join(f"• {t}" for t in comment_texts)
+                    "Comments:\n" + "\n".join(f"• {t}" for t in comment_texts)
                 )
-                logger.info("Added %d comment(s) from %s", len(comment_texts), url)
+                logger.info(
+                    "Added %d comment/reply text(s) from %s", len(comment_texts), url
+                )
         else:
-            logger.info("No comments available for %s", url)
+            logger.warning(
+                "No comments returned by yt-dlp for %s — "
+                "TikTok may have blocked the request or comments are disabled.",
+                url,
+            )
 
         content = "\n".join(parts).strip()
         if not content:

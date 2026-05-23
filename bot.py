@@ -176,10 +176,12 @@ def _process_link(message, url: str):
         books = extract_books(content)
 
         if not books:
-            preview = content[:300] + "…" if len(content) > 300 else content
+            has_comments = "Comments:" in content
+            preview = content[:500] + "…" if len(content) > 500 else content
             edit(
-                f"📭 *No books found* in this caption.\n\n"
-                f"_Caption preview:_\n`{preview}`",
+                f"📭 *No books found.*\n"
+                f"_Comments included: {'✅' if has_comments else '❌ (none fetched)'}_\n\n"
+                f"_Content preview:_\n`{preview}`",
                 parse_mode="Markdown",
             )
             send_notification(

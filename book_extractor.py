@@ -27,7 +27,7 @@ def _get_client() -> Groq:
 SYSTEM_PROMPT = """You are a book-detection assistant for a personal reading tracker.
 
 Your ONLY job: identify book titles and author names explicitly mentioned in social media content.
-The content may include a caption/description AND top comments from the post — treat all sections equally.
+The content may include a caption/description AND comments/replies from the post — treat all sections equally.
 
 Rules:
 - Include a book ONLY if its title is clearly stated (exact or near-exact wording).
@@ -35,6 +35,9 @@ Rules:
 - If an author is not mentioned anywhere in the content, use "Unknown" for the author field.
 - Treat both fiction and non-fiction equally.
 - Ignore hashtags, emojis, and promotional language unless they contain a clear title.
+- PAY SPECIAL ATTENTION to question-and-answer patterns: if a comment asks "what book is this?",
+  "book name?", "what's the title?", etc., look for a nearby comment or reply that answers
+  with a book title and include that book.
 - Return ONLY valid JSON — no explanation, no markdown, no extra text.
 
 Response format (always return this exact shape):
@@ -67,6 +70,13 @@ def extract_books(content: str) -> list[dict]:
 
     # Truncate to avoid token waste — higher limit now that comments are included
     truncated = content[:6000]
+
+    # Debug: log a preview so you can confirm comments/replies are present
+    has_comments = "Comments:" in truncated
+    logger.info(
+        "Sending %d chars to Groq (comments present: %s). Preview: %.200s…",
+        len(truncated), has_comments, truncated,
+    )
 
     try:
         client = _get_client()
