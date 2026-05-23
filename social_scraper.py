@@ -5,10 +5,15 @@ Uses yt-dlp to extract caption/description metadata from TikTok and Instagram
 posts without downloading any video files.
 """
 
+import os
 import logging
 import yt_dlp
 
 logger = logging.getLogger(__name__)
+
+# Path to a Netscape-format cookies file exported from your browser.
+# Set TIKTOK_COOKIES_FILE=/path/to/cookies.txt in your environment / Render vars.
+_COOKIES_FILE = os.environ.get("TIKTOK_COOKIES_FILE", "")
 
 
 def fetch_post_content(url: str) -> str | None:
@@ -34,6 +39,15 @@ def fetch_post_content(url: str) -> str | None:
             ),
         },
     }
+
+    # If a cookies file is configured, pass it to yt-dlp so TikTok
+    # treats the request as a logged-in browser session — this is the
+    # most reliable way to get comments from server/datacenter IPs.
+    if _COOKIES_FILE and os.path.isfile(_COOKIES_FILE):
+        ydl_opts["cookiefile"] = _COOKIES_FILE
+        logger.info("Using TikTok cookies file: %s", _COOKIES_FILE)
+    else:
+        logger.debug("No TIKTOK_COOKIES_FILE set — comment fetching may be blocked.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
