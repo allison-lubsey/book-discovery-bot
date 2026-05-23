@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from social_scraper import fetch_post_content
 from book_extractor import extract_books
 from notion_handler import save_book_to_notion
-from google_books import get_book_cover
+from google_books import get_book_info
 from ntfy_client import send_notification
 
 load_dotenv()
@@ -190,13 +190,21 @@ def _process_link(message, url: str):
             )
             return
 
-        # ── Step 3: Save each book to Notion ────────────────────────────
-        edit(f"💾 Found {len(books)} book(s)! Saving to Notion…")
+        # ── Step 3: Enrich from Google Books, then save to Notion ───────
+        edit(f"💾 Found {len(books)} book(s)! Looking up details & saving…")
 
         saved = []
         for book in books:
-            cover_url = get_book_cover(book["title"], book["author"])
-            book["cover_url"] = cover_url
+            gb = get_book_info(book["title"], book["author"])
+            book["cover_url"] = gb["cover_url"]
+
+            # Fill in author when Groq couldn't find one
+            if book["author"].lower() == "unknown" and gb["author"]:
+                logger.info(
+                    "Author resolved via Google Books: '%s' → '%s'",
+                    book["title"], gb["author"],
+                )
+                book["author"] = gb["author"]
 
             if save_book_to_notion(book, url):
                 saved.append(book)

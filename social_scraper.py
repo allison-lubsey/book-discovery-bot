@@ -24,6 +24,7 @@ def fetch_post_content(url: str) -> str | None:
         "skip_download": True,       # never download the video
         "extract_flat": False,
         "socket_timeout": 20,
+        "getcomments": True,         # fetch comment metadata (TikTok/Instagram)
         # Mimic a browser to reduce blocks
         "http_headers": {
             "User-Agent": (
@@ -59,6 +60,30 @@ def fetch_post_content(url: str) -> str | None:
 
         if description:
             parts.append(f"Caption: {description}")
+
+        # ── Comments ──────────────────────────────────────────────────────────
+        # yt-dlp returns a list of comment dicts when getcomments=True.
+        # Sort by like_count so the most-relevant comments come first.
+        comments: list = info.get("comments") or []
+        if comments:
+            top_comments = sorted(
+                comments,
+                key=lambda c: c.get("like_count") or 0,
+                reverse=True,
+            )[:25]   # cap at 25 to keep token count reasonable
+
+            comment_texts = [
+                c.get("text", "").strip()
+                for c in top_comments
+                if c.get("text", "").strip()
+            ]
+            if comment_texts:
+                parts.append(
+                    "Top Comments:\n" + "\n".join(f"• {t}" for t in comment_texts)
+                )
+                logger.info("Added %d comment(s) from %s", len(comment_texts), url)
+        else:
+            logger.info("No comments available for %s", url)
 
         content = "\n".join(parts).strip()
         if not content:
