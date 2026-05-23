@@ -42,8 +42,11 @@ def send_notification(
         logger.warning("Ntfy topic is empty – skipping notification.")
         return False
 
+    # HTTP headers must be latin-1 safe — strip any emoji from the title
+    safe_title = title.encode("latin-1", errors="ignore").decode("latin-1").strip()
+
     headers = {
-        "Title":    title,
+        "Title":    safe_title or "Book Bot",
         "Priority": str(priority),
         "Content-Type": "text/plain",
     }
