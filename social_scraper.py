@@ -7,6 +7,7 @@ posts without downloading any video files.
 
 import os
 import logging
+import requests
 import yt_dlp
 
 logger = logging.getLogger(__name__)
@@ -123,7 +124,61 @@ def fetch_post_content(url: str) -> str | None:
 
     except yt_dlp.utils.DownloadError as exc:
         logger.error("yt-dlp download error for %s: %s", url, exc)
-        return None
+        logger.info("Trying oEmbed fallback for %s", url)
+        return _oembed_fallback(url)
     except Exception as exc:
         logger.error("Unexpected scraper error for %s: %s", url, exc)
+        logger.info("Trying oEmbed fallback for %s", url)
+        return _oembed_fallback(url)
+
+
+def _oembed_fallback(url: str) -> str | None:
+    """
+    Fallback for when yt-dlp is blocked by TikTok.
+
+    TikTok's public oEmbed endpoint works from server IPs without auth
+    and returns the video title/caption + creator name.
+    Note: no comments are available via oEmbed.
+    """
+    # Only TikTok has a reliable oEmbed endpoint
+    if "tiktok.com" not in url.lower():
+        return None
+
+    try:
+        resp = requests.get(
+            "https://www.tiktok.com/oembed",
+            params={"url": url},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                    "Version/17.0 Mobile/15E148 Safari/604.1"
+                )
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        parts: list[str] = []
+        author = (data.get("author_name") or "").strip()
+        title  = (data.get("title") or "").strip()
+
+        if author:
+            parts.append(f"Creator: {author}")
+        if title:
+            parts.append(f"Caption: {title}")
+
+        content = "\n".join(parts).strip()
+        if content:
+            logger.info(
+                "oEmbed fallback succeeded for %s (%d chars, no comments)", url, len(content)
+            )
+            return content
+
+        logger.warning("oEmbed returned no usable text for %s", url)
+        return None
+
+    except Exception as exc:
+        logger.error("oEmbed fallback failed for %s: %s", url, exc)
         return None

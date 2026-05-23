@@ -12,7 +12,7 @@ groq==0.13.1
 notion-client==2.2.1
 
 # Social media scraping
-yt-dlp==2025.1.15
+yt-dlp>=2025.1.15
 
 # HTTP requests (Google Books + Ntfy)
 requests==2.32.3
