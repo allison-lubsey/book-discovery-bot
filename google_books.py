@@ -68,8 +68,13 @@ def _get_cover_from_cse(title: str, author: str = "") -> str | None:
             logger.info("Google CSE cover fallback for '%s': %s", title, url)
             return url
         logger.info("Google CSE: no image results for '%s'", title)
+    except requests.HTTPError as exc:
+        # Log only the status code — not the full URL, which contains the API key.
+        logger.error(
+            "Google CSE request failed for '%s': HTTP %s", title, exc.response.status_code
+        )
     except requests.RequestException as exc:
-        logger.error("Google CSE request failed for '%s': %s", title, exc)
+        logger.error("Google CSE request failed for '%s': %s", title, type(exc).__name__)
     except Exception as exc:
         logger.error("Unexpected Google CSE error for '%s': %s", title, exc)
 
