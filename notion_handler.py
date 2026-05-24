@@ -12,7 +12,7 @@ Author          │ Rich Text
 Source URL      │ URL
 Date Saved      │ Date
 Status          │ Select       (options: Want to Read, Reading, Read)
-Cover Image     │ URL
+Cover Image     │ Files & Media
 """
 
 import os
@@ -118,7 +118,15 @@ def save_book_to_notion(book: dict, source_url: str | None = None) -> bool:
         properties["Source URL"] = {"url": source_url}
 
     if cover_url:
-        properties["Cover Image"] = {"url": cover_url}
+        properties["Cover Image"] = {
+            "files": [
+                {
+                    "type":     "external",
+                    "name":     "cover",
+                    "external": {"url": cover_url},
+                }
+            ]
+        }
 
     # ── Build page payload ────────────────────────────────────────────────
     page_payload: dict = {
