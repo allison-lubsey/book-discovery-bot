@@ -3,6 +3,9 @@ google_books.py
 ---------------
 Fetches a book cover image URL from the Google Books API.
 No API key required for basic searches (uses the public endpoint).
+
+Falls back to Google Custom Search Image API when Google Books returns no cover.
+Requires environment variables GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX to be set.
 """
 
 import os
@@ -13,6 +16,57 @@ logger = logging.getLogger(__name__)
 
 _GOOGLE_BOOKS_URL = "https://www.googleapis.com/books/v1/volumes"
 _API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY")   # optional – improves rate limits
+
+# Google Custom Search Image API (fallback for missing covers)
+_CSE_API_KEY = os.environ.get("GOOGLE_CSE_API_KEY")
+_CSE_CX      = os.environ.get("GOOGLE_CSE_CX")
+_CSE_URL     = "https://www.googleapis.com/customsearch/v1"
+
+
+def _get_cover_from_cse(title: str, author: str = "") -> str | None:
+    """
+    Fallback: search for a book cover image via Google Custom Search JSON API.
+
+    Args:
+        title:  Book title.
+        author: Author name (used to narrow the query; may be empty or 'Unknown').
+
+    Returns:
+        An image URL string, or None if unavailable / not configured.
+    """
+    if not _CSE_API_KEY or not _CSE_CX:
+        logger.debug("Google CSE not configured — skipping image fallback")
+        return None
+
+    query_parts = [title]
+    if author and author.lower() not in ("", "unknown"):
+        query_parts.append(author)
+    query_parts.append("book cover")
+    query = " ".join(query_parts)
+
+    params = {
+        "key":        _CSE_API_KEY,
+        "cx":         _CSE_CX,
+        "q":          query,
+        "searchType": "image",
+        "num":        1,
+    }
+
+    try:
+        resp = requests.get(_CSE_URL, params=params, timeout=10)
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
+        if items:
+            url = items[0].get("link")
+            logger.info("Google CSE cover fallback for '%s': %s", title, url)
+            return url
+        logger.info("Google CSE: no image results for '%s'", title)
+    except requests.RequestException as exc:
+        logger.error("Google CSE request failed for '%s': %s", title, exc)
+    except Exception as exc:
+        logger.error("Unexpected Google CSE error for '%s': %s", title, exc)
+
+    return None
 
 
 def get_book_info(title: str, author: str = "") -> dict:
@@ -60,7 +114,10 @@ def get_book_info(title: str, author: str = "") -> dict:
         items = data.get("items", [])
         if not items:
             logger.info("Google Books: no results for '%s'", title)
-            return empty
+            return {
+                "cover_url": _get_cover_from_cse(title, author),
+                "author":    None,
+            }
 
         for item in items:
             vi           = item.get("volumeInfo", {})
@@ -82,6 +139,9 @@ def get_book_info(title: str, author: str = "") -> dict:
                 if cover:
                     cover = cover.replace("http://", "https://")
                     cover = cover.replace("&edge=curl", "").replace("edge=curl&", "")
+                else:
+                    # Author found but no cover — try CSE fallback
+                    cover = _get_cover_from_cse(title, found_author or author)
 
                 logger.info(
                     "Google Books hit for '%s': author=%s cover=%s",
@@ -90,7 +150,10 @@ def get_book_info(title: str, author: str = "") -> dict:
                 return {"cover_url": cover, "author": found_author}
 
         logger.info("Google Books: results found but no useful data for '%s'", title)
-        return empty
+        return {
+            "cover_url": _get_cover_from_cse(title, author),
+            "author":    None,
+        }
 
     except requests.RequestException as exc:
         logger.error("Google Books request failed for '%s': %s", title, exc)
