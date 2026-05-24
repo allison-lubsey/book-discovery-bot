@@ -57,7 +57,14 @@ def _get_cover_from_cse(title: str, author: str = "") -> str | None:
         resp.raise_for_status()
         items = resp.json().get("items", [])
         if items:
-            url = items[0].get("link")
+            item = items[0]
+            # Prefer Google's cached thumbnail — it's always accessible and
+            # won't be blocked by hotlink protection on the source site.
+            # Fall back to the direct image link if no thumbnail is present.
+            url = (
+                item.get("image", {}).get("thumbnailLink")
+                or item.get("link")
+            )
             logger.info("Google CSE cover fallback for '%s': %s", title, url)
             return url
         logger.info("Google CSE: no image results for '%s'", title)
