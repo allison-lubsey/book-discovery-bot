@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 _COOKIES_FILE = os.environ.get("TIKTOK_COOKIES_FILE", "")
 
 
-def fetch_post_content(url: str) -> str | None:
+def fetch_post_content(url: str) -> dict | None:
     """
     Fetch the caption/description of a TikTok or Instagram post.
 
-    Returns a plain-text string with the creator name and caption,
-    or None if the content could not be retrieved.
+    Returns a dict with keys:
+      - "text": plain-text string with creator name, caption, and any comments
+      - "thumbnail_url": URL of the post thumbnail (may be None)
+    Returns None if nothing could be retrieved.
     """
     ydl_opts = {
         "quiet": True,
@@ -57,6 +59,8 @@ def fetch_post_content(url: str) -> str | None:
         if not info:
             logger.warning("yt-dlp returned no info for %s", url)
             return None
+
+        thumbnail_url: str | None = (info.get("thumbnail") or "").strip() or None
 
         parts: list[str] = []
 
@@ -120,7 +124,7 @@ def fetch_post_content(url: str) -> str | None:
             return None
 
         logger.info("Fetched %d chars of content from %s", len(content), url)
-        return content
+        return {"text": content, "thumbnail_url": thumbnail_url}
 
     except yt_dlp.utils.DownloadError as exc:
         logger.error("yt-dlp download error for %s: %s", url, exc)
@@ -132,7 +136,7 @@ def fetch_post_content(url: str) -> str | None:
         return _oembed_fallback(url)
 
 
-def _oembed_fallback(url: str) -> str | None:
+def _oembed_fallback(url: str) -> dict | None:
     """
     Fallback for when yt-dlp is blocked by TikTok.
 
@@ -161,8 +165,9 @@ def _oembed_fallback(url: str) -> str | None:
         data = resp.json()
 
         parts: list[str] = []
-        author = (data.get("author_name") or "").strip()
-        title  = (data.get("title") or "").strip()
+        author        = (data.get("author_name") or "").strip()
+        title         = (data.get("title") or "").strip()
+        thumbnail_url: str | None = (data.get("thumbnail_url") or "").strip() or None
 
         if author:
             parts.append(f"Creator: {author}")
@@ -172,9 +177,10 @@ def _oembed_fallback(url: str) -> str | None:
         content = "\n".join(parts).strip()
         if content:
             logger.info(
-                "oEmbed fallback succeeded for %s (%d chars, no comments)", url, len(content)
+                "oEmbed fallback succeeded for %s (%d chars, no comments, thumbnail: %s)",
+                url, len(content), "yes" if thumbnail_url else "no",
             )
-            return content
+            return {"text": content, "thumbnail_url": thumbnail_url}
 
         logger.warning("oEmbed returned no usable text for %s", url)
         return None

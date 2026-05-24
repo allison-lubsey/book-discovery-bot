@@ -23,6 +23,8 @@ services:
         sync: false
       - key: GOOGLE_BOOKS_API_KEY  # optional – improves rate limits
         sync: false
+      - key: ANTHROPIC_API_KEY   # vision fallback for posts without book titles in caption
+        sync: false
 
     # Health-check: Render pings / every 10 s to decide if the service is up.
     # The bot's / route returns 200 OK, satisfying this check.

@@ -13,7 +13,7 @@ import telebot
 from dotenv import load_dotenv
 
 from social_scraper import fetch_post_content
-from book_extractor import extract_books
+from book_extractor import extract_books, extract_books_from_image
 from notion_handler import save_book_to_notion
 from google_books import get_book_info
 from ntfy_client import send_notification
@@ -98,8 +98,11 @@ def handle_help(message):
         "📖 *How it works:*\n\n"
         "1. Paste a TikTok or Instagram link\n"
         "2. I extract book titles & authors from the caption\n"
-        "3. Books are saved to your Notion DB\n"
-        "4. You get an Ntfy push notification\n\n"
+        "3. If nothing is found in the caption, I check the thumbnail image\n"
+        "4. Books are saved to your Notion DB\n"
+        "5. You get an Ntfy push notification\n\n"
+        "📸 *Can't find it automatically?*\n"
+        "Send me a *photo* of the book cover and I'll identify it directly.\n\n"
         "*Supported platforms:*\n"
         "• TikTok videos & short links\n"
         "• Instagram posts & Reels\n\n"
@@ -108,6 +111,16 @@ def handle_help(message):
         "/help  – This message",
         parse_mode="Markdown",
     )
+
+
+@bot.message_handler(content_types=["photo"])
+def handle_photo(message):
+    user_id = str(message.from_user.id)
+    if ALLOWED_USER_ID and user_id != ALLOWED_USER_ID:
+        bot.reply_to(message, "❌ Unauthorized.")
+        return
+    thread = threading.Thread(target=_process_photo, args=(message,), daemon=True)
+    thread.start()
 
 
 @bot.message_handler(func=lambda m: True, content_types=["text"])
@@ -143,6 +156,91 @@ def handle_message(message):
 # Core processing (runs in background thread)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _process_photo(message):
+    """Pipeline for directly-sent photos: vision → enrich → save → notify."""
+    chat_id = message.chat.id
+    status_msg = bot.reply_to(message, "⏳ Analyzing your photo…")
+
+    def edit(text, **kwargs):
+        try:
+            bot.edit_message_text(text, chat_id, status_msg.message_id, **kwargs)
+        except Exception:
+            pass
+
+    try:
+        # ── Step 1: Get image URL from Telegram ─────────────────────────────
+        # Use the highest-resolution version Telegram offers
+        photo = message.photo[-1]
+        file_info = bot.get_file(photo.file_id)
+        image_url = (
+            f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+        )
+
+        # ── Step 2: Extract books via Claude vision ──────────────────────────
+        edit("🔍 Looking for book covers in your photo…")
+        books = extract_books_from_image(image_url)
+
+        if not books:
+            edit(
+                "📭 *No book covers found.*\n\n"
+                "_Tips: send a clear, straight-on photo of the book cover "
+                "with the title and author visible._",
+                parse_mode="Markdown",
+            )
+            send_notification(
+                NTFY_TOPIC,
+                title="📭 No Books Found (photo)",
+                message="No book covers detected in the sent photo.",
+                tags=["books"],
+            )
+            return
+
+        # ── Step 3: Enrich from Google Books, then save to Notion ───────────
+        edit(f"💾 Found {len(books)} book(s)! Looking up details & saving…")
+
+        saved = []
+        for book in books:
+            gb = get_book_info(book["title"], book["author"])
+            book["cover_url"] = gb["cover_url"]
+
+            if book["author"].lower() == "unknown" and gb["author"]:
+                logger.info(
+                    "Author resolved via Google Books: '%s' → '%s'",
+                    book["title"], gb["author"],
+                )
+                book["author"] = gb["author"]
+
+            if save_book_to_notion(book, source_url="(photo)"):
+                saved.append(book)
+
+        # ── Step 4: Report results ───────────────────────────────────────────
+        if saved:
+            lines = "\n".join(f"📖 *{b['title']}* — _{b['author']}_" for b in saved)
+            edit(
+                f"✅ *Saved {len(saved)} book(s) to Notion!*\n\n{lines}",
+                parse_mode="Markdown",
+            )
+            notif_body = "\n".join(f"• {b['title']} by {b['author']}" for b in saved)
+            send_notification(
+                NTFY_TOPIC,
+                title=f"📚 {len(saved)} Book(s) Saved!",
+                message=notif_body,
+                tags=["books", "white_check_mark"],
+            )
+        else:
+            edit("⚠️ Books were detected but could not be saved to Notion. Check your Notion config.")
+
+    except Exception as exc:
+        logger.exception("Unexpected error processing photo")
+        edit(f"❌ Unexpected error: {exc}")
+        send_notification(
+            NTFY_TOPIC,
+            title="❌ Bot Error (photo)",
+            message=str(exc),
+            tags=["warning"],
+        )
+
+
 def _process_link(message, url: str):
     """Full pipeline: scrape → extract → save → notify."""
     chat_id = message.chat.id
@@ -156,9 +254,9 @@ def _process_link(message, url: str):
 
     try:
         # ── Step 1: Scrape caption ───────────────────────────────────────
-        content = fetch_post_content(url)
+        result = fetch_post_content(url)
 
-        if not content:
+        if not result:
             edit(
                 "❌ Could not fetch this post.\n"
                 "It may be private, deleted, or the platform blocked the request."
@@ -171,16 +269,34 @@ def _process_link(message, url: str):
             )
             return
 
+        content: str = result["text"]
+        thumbnail_url: str | None = result.get("thumbnail_url")
+
         # ── Step 2: Extract books via Groq ───────────────────────────────
         edit("🤖 Analyzing caption for books…")
         books = extract_books(content)
+
+        # ── Step 2b: Vision fallback via Claude ──────────────────────────
+        # If the caption had no book titles but we have a thumbnail, try
+        # inspecting the image for visible book covers.
+        vision_used = False
+        if not books and thumbnail_url:
+            edit("🔍 Caption had no books — checking thumbnail for book covers…")
+            books = extract_books_from_image(thumbnail_url)
+            if books:
+                vision_used = True
+                logger.info(
+                    "Vision fallback found %d book(s) from thumbnail for %s",
+                    len(books), url,
+                )
 
         if not books:
             has_comments = "Comments:" in content
             preview = content[:500] + "…" if len(content) > 500 else content
             edit(
                 f"📭 *No books found.*\n"
-                f"_Comments included: {'✅' if has_comments else '❌ (none fetched)'}_\n\n"
+                f"_Comments included: {'✅' if has_comments else '❌ (none fetched)'}_\n"
+                f"_Thumbnail checked: {'✅' if thumbnail_url else '❌ (not available)'}_\n\n"
                 f"_Content preview:_\n`{preview}`",
                 parse_mode="Markdown",
             )
@@ -193,7 +309,8 @@ def _process_link(message, url: str):
             return
 
         # ── Step 3: Enrich from Google Books, then save to Notion ───────
-        edit(f"💾 Found {len(books)} book(s)! Looking up details & saving…")
+        source_label = "thumbnail image" if vision_used else "caption"
+        edit(f"💾 Found {len(books)} book(s) in {source_label}! Looking up details & saving…")
 
         saved = []
         for book in books:

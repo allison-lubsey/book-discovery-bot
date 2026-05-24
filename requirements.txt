@@ -5,8 +5,9 @@ pyTelegramBotAPI==4.22.1
 Flask==3.1.0
 gunicorn==23.0.0
 
-# AI – book extraction
+# AI – book extraction (text via Groq, vision fallback via Anthropic)
 groq==0.13.1
+anthropic>=0.40.0
 
 # Notion database
 notion-client==2.2.1
