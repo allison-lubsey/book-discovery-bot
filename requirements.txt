@@ -8,6 +8,9 @@ gunicorn==23.0.0
 # AI – book extraction via Groq
 groq==0.13.1
 
+# AI – screenshot / vision extraction via Anthropic Claude
+anthropic>=0.40.0
+
 # Notion database
 notion-client==2.2.1
 

@@ -36,13 +36,13 @@ def _get_client() -> Client:
 DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "")
 
 
-def save_book_to_notion(book: dict, source_url: str) -> bool:
+def save_book_to_notion(book: dict, source_url: str | None = None) -> bool:
     """
     Create a new page in the Notion books database.
 
     Args:
         book:       Dict with keys 'title', 'author', and optionally 'cover_url'.
-        source_url: The original TikTok/Instagram URL.
+        source_url: The original TikTok/Instagram URL, or None for screenshots.
 
     Returns:
         True on success, False on failure.
@@ -60,9 +60,6 @@ def save_book_to_notion(book: dict, source_url: str) -> bool:
         "Author": {
             "rich_text": [{"text": {"content": author}}]
         },
-        "Source URL": {
-            "url": source_url
-        },
         "Date Saved": {
             "date": {"start": today}
         },
@@ -70,6 +67,10 @@ def save_book_to_notion(book: dict, source_url: str) -> bool:
             "select": {"name": "Want to Read"}
         },
     }
+
+    # Only include Source URL when we actually have one (screenshots have none)
+    if source_url:
+        properties["Source URL"] = {"url": source_url}
 
     if cover_url:
         properties["Cover Image"] = {"url": cover_url}
