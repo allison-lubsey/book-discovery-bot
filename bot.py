@@ -264,7 +264,6 @@ def _process_link(message, url: str):
 
         for book in books:
             gb = get_book_info(book["title"], book["author"])
-            book["cover_url"] = gb["cover_url"]
 
             # Fill in author when Groq couldn't find one
             if book["author"].lower() == "unknown" and gb["author"]:
@@ -360,8 +359,7 @@ def _process_screenshot(message, image_data: bytes, media_type: str):
         skipped: list[dict] = []   # books already in Notion
 
         for book in books:
-            gb             = get_book_info(book["title"], book["author"])
-            book["cover_url"] = gb["cover_url"]
+            gb = get_book_info(book["title"], book["author"])
 
             # Fill in author when vision couldn't find one
             if book["author"].lower() == "unknown" and gb["author"]:

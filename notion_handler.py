@@ -12,7 +12,6 @@ Author          │ Rich Text
 Source URL      │ URL
 Date Saved      │ Date
 Status          │ Select       (options: Want to Read, Reading, Read)
-Cover Image     │ Files & Media
 """
 
 import os
@@ -86,16 +85,15 @@ def save_book_to_notion(book: dict, source_url: str | None = None) -> bool:
     Create a new page in the Notion books database.
 
     Args:
-        book:       Dict with keys 'title', 'author', and optionally 'cover_url'.
+        book:       Dict with keys 'title' and 'author'.
         source_url: The original TikTok/Instagram URL, or None for screenshots.
 
     Returns:
         True on success, False on failure.
     """
-    title     = (book.get("title") or "Unknown Title").strip()
-    author    = (book.get("author") or "Unknown").strip()
-    cover_url = book.get("cover_url")
-    today     = datetime.now(timezone.utc).date().isoformat()  # "YYYY-MM-DD"
+    title  = (book.get("title") or "Unknown Title").strip()
+    author = (book.get("author") or "Unknown").strip()
+    today  = datetime.now(timezone.utc).date().isoformat()  # "YYYY-MM-DD"
 
     # ── Build properties payload ──────────────────────────────────────────
     properties: dict = {
@@ -117,29 +115,11 @@ def save_book_to_notion(book: dict, source_url: str | None = None) -> bool:
     if source_url:
         properties["Source URL"] = {"url": source_url}
 
-    if cover_url:
-        properties["Cover Image"] = {
-            "files": [
-                {
-                    "type":     "external",
-                    "name":     "cover",
-                    "external": {"url": cover_url},
-                }
-            ]
-        }
-
     # ── Build page payload ────────────────────────────────────────────────
     page_payload: dict = {
         "parent":     {"database_id": DATABASE_ID},
         "properties": properties,
     }
-
-    # Set the Notion page cover image for a visual card layout
-    if cover_url:
-        page_payload["cover"] = {
-            "type":     "external",
-            "external": {"url": cover_url},
-        }
 
     # ── Create the page ───────────────────────────────────────────────────
     try:

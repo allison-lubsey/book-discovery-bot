@@ -7,7 +7,6 @@ You        →  share a TikTok/Instagram link  OR  send a screenshot
 Bot        →  scrapes the post caption  OR  sends image to Claude vision
 Groq/Claude→  extracts book titles & authors
 Bot        →  checks Notion for duplicates (title + author)
-Bot        →  fetches cover images from Google Books
 Bot        →  saves each new book to your Notion database
 Ntfy       →  sends you a push notification
 ```
@@ -17,7 +16,7 @@ Ntfy       →  sends you a push notification
 - Groq API for text extraction (TikTok/Instagram captions)
 - Anthropic API (Claude Haiku) for screenshot/vision extraction
 - Notion API for storage
-- Google Books API for cover art
+- Google Books API for author lookups
 - Ntfy for push notifications
 
 ---
@@ -63,7 +62,6 @@ Ntfy       →  sends you a push notification
 | Source URL    | URL    | Left blank for screenshot-sourced books    |
 | Date Saved    | Date   |                                            |
 | Status        | Select | Add options: `Want to Read`, `Reading`, `Read` |
-| Cover Image   | URL    |                                            |
 
 4. **Connect your integration to the database:**
    - Open the database
@@ -232,7 +230,7 @@ ngrok http 5000
 3. **Option A:** Paste any TikTok or Instagram link
 4. **Option B:** Send a screenshot (as a photo or as a file attachment)
 5. The bot replies with status updates, then confirms what was saved
-6. Check your Notion database — the book card will be there with cover art
+6. Check your Notion database — the book entry will be there
 7. Your phone receives an Ntfy push notification
 
 **Supported screenshot formats:** JPG, JPEG, PNG, WebP
@@ -284,6 +282,3 @@ The bot checks Notion before saving. If a book with the same title **and** autho
 - Check that all property names match exactly (case-sensitive)
 - Verify `NOTION_DATABASE_ID` is the correct 32-char ID
 
-**No cover image:**
-- Google Books doesn't have every book — the entry still saves, just without a cover
-- Very new or obscure books may not have covers indexed yet
