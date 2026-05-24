@@ -157,7 +157,7 @@ def get_book_info(title: str, author: str = "") -> dict:
 
     except requests.RequestException as exc:
         logger.error("Google Books request failed for '%s': %s", title, exc)
-        return empty
+        return {"cover_url": _get_cover_from_cse(title, author), "author": None}
     except Exception as exc:
         logger.error("Unexpected Google Books error for '%s': %s", title, exc)
         return empty
