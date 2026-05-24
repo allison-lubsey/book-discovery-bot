@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from social_scraper import fetch_post_content
 from book_extractor import extract_books
 from screenshot_extractor import extract_books_from_screenshot, SUPPORTED_EXTENSIONS
-from notion_handler import save_book_to_notion
+from notion_handler import save_book_to_notion, book_exists_in_notion
 from google_books import get_book_info
 from ntfy_client import send_notification
 
@@ -259,7 +259,9 @@ def _process_link(message, url: str):
         # ── Step 3: Enrich from Google Books, then save to Notion ───────
         edit(f"💾 Found {len(books)} book(s)! Looking up details & saving…")
 
-        saved = []
+        saved:   list[dict] = []
+        skipped: list[dict] = []   # books already in Notion
+
         for book in books:
             gb = get_book_info(book["title"], book["author"])
             book["cover_url"] = gb["cover_url"]
@@ -272,14 +274,21 @@ def _process_link(message, url: str):
                 )
                 book["author"] = gb["author"]
 
-            if save_book_to_notion(book, url):
+            if book_exists_in_notion(book["title"], book["author"]):
+                skipped.append(book)
+            elif save_book_to_notion(book, url):
                 saved.append(book)
 
         # ── Step 4: Report results ───────────────────────────────────────
         if saved:
-            lines = "\n".join(f"📖 *{b['title']}* — _{b['author']}_" for b in saved)
+            lines     = "\n".join(f"📖 *{b['title']}* — _{b['author']}_" for b in saved)
+            dupe_note = ""
+            if skipped:
+                dupe_note = "\n\n📚 *Already in Notion:* " + ", ".join(
+                    f"_{b['title']}_" for b in skipped
+                )
             edit(
-                f"✅ *Saved {len(saved)} book(s) to Notion!*\n\n{lines}",
+                f"✅ *Saved {len(saved)} book(s) to Notion!*\n\n{lines}{dupe_note}",
                 parse_mode="Markdown",
             )
             notif_body = "\n".join(f"• {b['title']} by {b['author']}" for b in saved)
@@ -288,6 +297,12 @@ def _process_link(message, url: str):
                 title=f"📚 {len(saved)} Book(s) Saved!",
                 message=notif_body,
                 tags=["books", "white_check_mark"],
+            )
+        elif skipped:
+            lines = "\n".join(f"📚 *{b['title']}* — _{b['author']}_" for b in skipped)
+            edit(
+                f"📚 *Already in your Notion library!*\n\n{lines}",
+                parse_mode="Markdown",
             )
         else:
             edit("⚠️ Books were detected but could not be saved to Notion. Check your Notion config.")
@@ -341,7 +356,9 @@ def _process_screenshot(message, image_data: bytes, media_type: str):
         # ── Step 2: Enrich from Google Books, then save to Notion ─────────
         edit(f"💾 Found {len(books)} book(s)! Looking up details & saving…")
 
-        saved = []
+        saved:   list[dict] = []
+        skipped: list[dict] = []   # books already in Notion
+
         for book in books:
             gb             = get_book_info(book["title"], book["author"])
             book["cover_url"] = gb["cover_url"]
@@ -354,14 +371,21 @@ def _process_screenshot(message, image_data: bytes, media_type: str):
                 )
                 book["author"] = gb["author"]
 
-            if save_book_to_notion(book, None):   # no source URL for screenshots
+            if book_exists_in_notion(book["title"], book["author"]):
+                skipped.append(book)
+            elif save_book_to_notion(book, None):   # no source URL for screenshots
                 saved.append(book)
 
         # ── Step 3: Report results ─────────────────────────────────────────
         if saved:
-            lines = "\n".join(f"📖 *{b['title']}* — _{b['author']}_" for b in saved)
+            lines     = "\n".join(f"📖 *{b['title']}* — _{b['author']}_" for b in saved)
+            dupe_note = ""
+            if skipped:
+                dupe_note = "\n\n📚 *Already in Notion:* " + ", ".join(
+                    f"_{b['title']}_" for b in skipped
+                )
             edit(
-                f"✅ *Saved {len(saved)} book(s) to Notion!*\n\n{lines}",
+                f"✅ *Saved {len(saved)} book(s) to Notion!*\n\n{lines}{dupe_note}",
                 parse_mode="Markdown",
             )
             notif_body = "\n".join(f"• {b['title']} by {b['author']}" for b in saved)
@@ -370,6 +394,12 @@ def _process_screenshot(message, image_data: bytes, media_type: str):
                 title=f"📚 {len(saved)} Book(s) Saved!",
                 message=notif_body,
                 tags=["books", "white_check_mark"],
+            )
+        elif skipped:
+            lines = "\n".join(f"📚 *{b['title']}* — _{b['author']}_" for b in skipped)
+            edit(
+                f"📚 *Already in your Notion library!*\n\n{lines}",
+                parse_mode="Markdown",
             )
         else:
             edit("⚠️ Books were detected but could not be saved to Notion. Check your Notion config.")

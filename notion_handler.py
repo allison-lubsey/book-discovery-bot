@@ -36,6 +36,51 @@ def _get_client() -> Client:
 DATABASE_ID = os.environ.get("NOTION_DATABASE_ID", "")
 
 
+def book_exists_in_notion(title: str, author: str) -> bool:
+    """
+    Return True if a book with this title AND author already exists in the database.
+
+    Matching rules:
+    - Title: Notion's ``title.equals`` filter is case-insensitive, so
+      "The Great Gatsby" and "the great gatsby" are treated as the same.
+    - Author: normalised to lowercase in Python after fetching results.
+    - Same title by *different* authors → NOT a duplicate (two separate books).
+    - "📌 Review Later" placeholder entries are never treated as duplicates.
+    - Any API error fails open (returns False) so we never silently lose data.
+    """
+    if not title or title == "📌 Review Later":
+        return False
+
+    try:
+        notion      = _get_client()
+        norm_author = author.strip().lower()
+
+        resp = notion.databases.query(
+            database_id=DATABASE_ID,
+            filter={
+                "property": "Title",
+                "title":    {"equals": title},   # Notion: case-insensitive equals
+            },
+            page_size=10,   # more than enough for an exact-title match
+        )
+
+        for page in resp.get("results", []):
+            props = page.get("properties", {})
+            rt    = props.get("Author", {}).get("rich_text", [])
+            saved_author = (rt[0].get("plain_text", "") if rt else "unknown").strip().lower()
+            if saved_author == norm_author:
+                logger.info("Duplicate detected: '%s' by '%s'", title, author)
+                return True
+
+        return False
+
+    except Exception as exc:
+        logger.warning(
+            "Duplicate check failed (failing open to avoid data loss): %s", exc
+        )
+        return False
+
+
 def save_book_to_notion(book: dict, source_url: str | None = None) -> bool:
     """
     Create a new page in the Notion books database.

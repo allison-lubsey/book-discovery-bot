@@ -1,19 +1,21 @@
 # 📚 Book Discovery Bot
 
-A Telegram bot that saves books to Notion when you share a TikTok or Instagram video link.
+A Telegram bot that saves books to Notion when you share a TikTok/Instagram link **or a screenshot**.
 
 ```
-You  →  share a TikTok/Instagram link to the bot
-Bot  →  scrapes the post caption
-Groq →  extracts book titles & authors (llama-3.1-8b-instant)
-Bot  →  fetches cover images from Google Books
-Bot  →  saves each book to your Notion database
-Ntfy →  sends you a push notification
+You        →  share a TikTok/Instagram link  OR  send a screenshot
+Bot        →  scrapes the post caption  OR  sends image to Claude vision
+Groq/Claude→  extracts book titles & authors
+Bot        →  checks Notion for duplicates (title + author)
+Bot        →  fetches cover images from Google Books
+Bot        →  saves each new book to your Notion database
+Ntfy       →  sends you a push notification
 ```
 
-**Tech stack (all free):**
+**Tech stack (all free tiers available):**
 - Telegram bot (webhook mode, hosted on Render free tier)
-- Groq API for AI extraction
+- Groq API for text extraction (TikTok/Instagram captions)
+- Anthropic API (Claude Haiku) for screenshot/vision extraction
 - Notion API for storage
 - Google Books API for cover art
 - Ntfy for push notifications
@@ -58,7 +60,7 @@ Ntfy →  sends you a push notification
 |---------------|--------|--------------------------------------------|
 | Title         | Title  | Already exists by default — rename if needed |
 | Author        | Text   |                                            |
-| Source URL    | URL    |                                            |
+| Source URL    | URL    | Left blank for screenshot-sourced books    |
 | Date Saved    | Date   |                                            |
 | Status        | Select | Add options: `Want to Read`, `Reading`, `Read` |
 | Cover Image   | URL    |                                            |
@@ -86,7 +88,19 @@ Ntfy →  sends you a push notification
 
 ---
 
-## 4. Ntfy Setup
+## 4. Anthropic API Setup (for screenshots)
+
+Required for screenshot/vision support. Without it, link scraping still works fine.
+
+1. Go to https://console.anthropic.com
+2. Sign up and go to **API Keys** → **Create Key**
+3. Set `ANTHROPIC_API_KEY=sk-ant-...`
+
+The bot uses **claude-haiku-4-5-20251001** — Anthropic's fastest and most affordable model.
+
+---
+
+## 5. Ntfy Setup
 
 No account needed!
 
@@ -105,9 +119,9 @@ That's it! No login, no account. Anyone who knows your topic can send to it, so 
 
 ---
 
-## 5. Deploy to Render (Free Tier)
+## 6. Deploy to Render (Free Tier)
 
-### 5a. Push to GitHub
+### 6a. Push to GitHub
 
 ```bash
 cd book-discovery-bot
@@ -119,7 +133,7 @@ git remote add origin https://github.com/YOUR_USERNAME/book-discovery-bot.git
 git push -u origin main
 ```
 
-### 5b. Create Render Web Service
+### 6b. Create Render Web Service
 
 1. Go to https://render.com and sign up (free)
 2. Click **New** → **Web Service**
@@ -137,6 +151,7 @@ git push -u origin main
    |-----|-------|
    | `TELEGRAM_BOT_TOKEN` | your bot token |
    | `GROQ_API_KEY` | your Groq key |
+   | `ANTHROPIC_API_KEY` | your Anthropic key |
    | `NOTION_API_KEY` | `secret_...` |
    | `NOTION_DATABASE_ID` | 32-char database ID |
    | `NTFY_TOPIC` | your topic name |
@@ -144,7 +159,7 @@ git push -u origin main
 
 6. Click **Create Web Service** — Render will build and deploy
 
-### 5c. Register the Webhook (one-time)
+### 6c. Register the Webhook (one-time)
 
 Once your service is live (URL shown in Render dashboard, e.g. `https://book-discovery-bot.onrender.com`):
 
@@ -155,7 +170,7 @@ Once your service is live (URL shown in Render dashboard, e.g. `https://book-dis
 2. You should see: `✅ Webhook set to: https://book-discovery-bot.onrender.com/webhook`
 3. Done! Telegram will now push all messages to your bot.
 
-### 5d. Keep it Alive with UptimeRobot (free)
+### 6d. Keep it Alive with UptimeRobot (free)
 
 Render's free tier sleeps after 15 minutes of inactivity. Set up a free pinger:
 
@@ -168,7 +183,7 @@ Render's free tier sleeps after 15 minutes of inactivity. Set up a free pinger:
 
 ---
 
-## 6. Local Development (optional)
+## 7. Local Development (optional)
 
 ```bash
 # 1. Clone and set up
@@ -200,11 +215,13 @@ ngrok http 5000
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | ✅ | From @BotFather |
 | `GROQ_API_KEY` | ✅ | From console.groq.com |
+| `ANTHROPIC_API_KEY` | ✅ | From console.anthropic.com — used for screenshot vision |
 | `NOTION_API_KEY` | ✅ | From notion.so/my-integrations |
 | `NOTION_DATABASE_ID` | ✅ | 32-char ID from database URL |
 | `NTFY_TOPIC` | ✅ | Your unique topic name |
 | `TELEGRAM_USER_ID` | ☑️ Optional | Restrict bot to only you |
 | `GOOGLE_BOOKS_API_KEY` | ☑️ Optional | Improves Google Books rate limits |
+| `TIKTOK_COOKIES_FILE` | ☑️ Optional | Path to cookies.txt for TikTok comment fetching |
 
 ---
 
@@ -212,10 +229,27 @@ ngrok http 5000
 
 1. Open your Telegram bot
 2. Send `/start` to see the welcome message
-3. Paste any TikTok or Instagram link
-4. The bot will reply with status updates, then confirm what was saved
-5. Check your Notion database — the book card will be there with cover art
-6. Your phone will receive an Ntfy push notification
+3. **Option A:** Paste any TikTok or Instagram link
+4. **Option B:** Send a screenshot (as a photo or as a file attachment)
+5. The bot replies with status updates, then confirms what was saved
+6. Check your Notion database — the book card will be there with cover art
+7. Your phone receives an Ntfy push notification
+
+**Supported screenshot formats:** JPG, JPEG, PNG, WebP
+Send as a *photo* (Telegram compresses it) or as a *file* (preserves original quality).
+
+### Duplicate detection
+
+The bot checks Notion before saving. If a book with the same title **and** author already exists, it's skipped — not added again. Books with the same title but different authors are treated as separate books.
+
+**Response examples:**
+
+| Scenario | Bot message |
+|---|---|
+| 2 new books | ✅ Saved 2 book(s) to Notion! |
+| 1 new + 1 dupe | ✅ Saved 1 book(s) to Notion! 📚 Already in Notion: _Book Title_ |
+| All dupes | 📚 Already in your Notion library! |
+| No books detected | 📌 No books detected — saved for later review |
 
 ### Example notifications
 
@@ -224,13 +258,6 @@ ngrok http 5000
 📚 2 Book(s) Saved!
 • Atomic Habits by James Clear
 • The 4-Hour Work Week by Tim Ferriss
-```
-
-**No books found:**
-```
-📭 No Books Found
-No books detected in:
-https://www.tiktok.com/@user/video/123...
 ```
 
 ---
@@ -246,6 +273,11 @@ https://www.tiktok.com/@user/video/123...
 - Private posts cannot be scraped
 - Very new posts sometimes fail — try again in a minute
 - Instagram may block scraping more aggressively than TikTok
+
+**Screenshot returns no books:**
+- Make sure the book title is clearly legible in the image
+- Try sending as a file (uncompressed) instead of a photo for better quality
+- Check that `ANTHROPIC_API_KEY` is set correctly in Render
 
 **Notion save fails:**
 - Confirm the integration is connected to your database (⋯ → Connections)
